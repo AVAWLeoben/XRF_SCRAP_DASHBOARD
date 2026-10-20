@@ -18,17 +18,31 @@ def table(df):
                                 show_index=False, header_filters=True, height=360, theme='midnight',
                                 stylesheets=[t.COMPONENT_CSS])
 
-def result(fig, df=None):
-    fig = t.style_figure(fig, x.CHEM_ELEMENTS + conditions + x.MORPH_FEATURES)
-    children = [pn.pane.Plotly(fig, config={'responsive': True}, sizing_mode='stretch_width')]
-    if df is not None:
-        children += [pn.pane.Markdown('#### Statistics (normalized XRF signals; BDL counted as zero)'), table(df)]
-    return pn.Column(*children, styles=t.CARD, margin=(16, 0))
+# Keep each chart pane alive across filter updates. Replacing entire panes can
+# leave queued Plotly resize callbacks targeting a purged graph.
+_result_views = {}
 
-def chemistry_view(particle, elements, kind, scale):
+def result(fig, df=None, *, key, heading='Statistics (normalized XRF signals; BDL counted as zero)'):
+    fig = t.style_figure(fig, x.CHEM_ELEMENTS + conditions + x.MORPH_FEATURES)
+    if key not in _result_views:
+        plot = pn.pane.Plotly(fig, config={'responsive': False}, sizing_mode='stretch_width')
+        stats = table(df) if df is not None else None
+        children = [plot]
+        if stats is not None:
+            children += [pn.pane.Markdown('#### ' + heading), stats]
+        view = pn.Column(*children, styles=t.CARD, margin=(16, 0))
+        _result_views[key] = (view, plot, stats)
+    else:
+        view, plot, stats = _result_views[key]
+        plot.object = fig
+        if stats is not None and df is not None:
+            stats.value = df
+    return _result_views[key][0]
+
+def chemistry_view(particle, elements, kind, scale, key="distribution"):
     d = x.filter_particle_class(x.DF_FULL, particle)
     fig = x.make_element_distribution_figure(d, elements, kind, scale == 'Log', f'Element distributions — {particle}')
-    return result(fig, x.compact_summary(d, elements))
+    return result(fig, x.compact_summary(d, elements), key=key)
 
 dist_particle = select('Particle subset', particles)
 dist_elements = pn.widgets.MultiChoice(name='Elements', options=x.CHEM_ELEMENTS, value=x.EAF_ELEMENTS, stylesheets=[t.COMPONENT_CSS])
@@ -38,12 +52,12 @@ distribution = pn.Column(pn.FlexBox(dist_particle, dist_kind, dist_scale), dist_
     pn.bind(chemistry_view, dist_particle, dist_elements, dist_kind, dist_scale))
 
 eaf_particle = select('Particle subset', particles)
-eaf = pn.Column(eaf_particle, pn.bind(chemistry_view, eaf_particle, x.EAF_ELEMENTS, 'Violin / raincloud', 'Log'))
+eaf = pn.Column(eaf_particle, pn.bind(chemistry_view, eaf_particle, x.EAF_ELEMENTS, 'Violin / raincloud', 'Log', key='eaf'))
 
 def condition_view(particle, element, group, scale):
     d = x.filter_particle_class(x.DF_FULL, particle)
     return result(x.make_eaf_condition_figure(x.DF_FULL, element, group, particle, scale == 'Log'),
-                  x.compact_summary(d, [element], group))
+                  x.compact_summary(d, [element], group), key="condition")
 
 cond_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
 cond_element = select('EAF element', x.EAF_ELEMENTS, 'Cu')
@@ -58,7 +72,7 @@ mass_a = select('Condition A', conditions, 'Cast')
 mass_b = select('Condition B', conditions, 'Ductile')
 mass_scale = select('Scale', ['Log', 'Linear'])
 def mass_view(particle, element, a, b, scale):
-    return result(x.make_mass_vs_eaf_element_comparison(x.DF_FULL, element, a, b, particle, scale == 'Log'))
+    return result(x.make_mass_vs_eaf_element_comparison(x.DF_FULL, element, a, b, particle, scale == 'Log'), key='mass')
 mass = pn.Column(pn.FlexBox(mass_particle, mass_element, mass_scale), pn.FlexBox(mass_a, mass_b),
     pn.bind(mass_view, mass_particle, mass_element, mass_a, mass_b, mass_scale))
 
@@ -67,7 +81,7 @@ heat_mode = select('Aggregation', ['weighted_median', 'weighted_mean', 'median',
 heat_elements = pn.widgets.MultiChoice(name='Elements', options=x.CHEM_ELEMENTS, value=x.EAF_ELEMENTS, stylesheets=[t.COMPONENT_CSS])
 def heat_view(particle, elements, mode):
     comp = x.aggregate_composition(x.DF_FULL, elements, mode, particle).reset_index()
-    return result(x.make_composition_heatmap(x.DF_FULL, elements, mode, particle), comp)
+    return result(x.make_composition_heatmap(x.DF_FULL, elements, mode, particle), comp, key="heatmap")
 heatmap = pn.Column(pn.FlexBox(heat_particle, heat_mode), heat_elements,
     pn.pane.Markdown('Weighted mean estimates a mass-weighted signal. Weighted median is a distribution statistic, not bulk composition.'),
     pn.bind(heat_view, heat_particle, heat_elements, heat_mode))
@@ -81,8 +95,9 @@ morph_norm = pn.widgets.Select(name='Histogram normalization', options={
 def morph_view(particle, condition, features, norm):
     d = x.get_filtered_morphology_df(particle, condition)
     records, _ = x.make_morphology_stats_table(particle, condition, features)
-    return pn.Column(f'Morphology rows in selection: **{len(d):,}**',
-        result(x.make_morphology_distribution_figure(particle, condition, features, norm)), table(pd.DataFrame(records)))
+    return result(x.make_morphology_distribution_figure(particle, condition, features, norm),
+                  pd.DataFrame(records), key='morphology', heading='Morphology statistics')
+
 morphology = pn.Column(
     'Morphology values are retained unchanged and have not been validated. The default shows all morphology objects; chemistry filters use matching object IDs.',
     pn.FlexBox(morph_particle, morph_condition, morph_norm), morph_features,
@@ -90,7 +105,7 @@ morphology = pn.Column(
 
 tabs = pn.Tabs(('Element distributions', distribution), ('EAF elements', eaf),
               ('EAF element by condition', by_condition), ('Mass vs EAF element', mass),
-              ('Composition heatmap', heatmap), ('Morphology', morphology), dynamic=True,
+              ('Composition heatmap', heatmap), ('Morphology', morphology), dynamic=False,
               stylesheets=[t.COMPONENT_CSS])
 header = pn.pane.HTML(f"""
 <header class="header">

@@ -1,5 +1,18 @@
 # Validation performed
 
+## Plotly lifecycle correction
+
+The supplied CI log reached the final browser assertion with three Plotly
+`_guiEditing` errors. This is consistent with a resize/redraw targeting a graph
+whose layout is unavailable; the exact browser stack was not in that log.
+The revised app keeps its six Plotly panes and tab contents mounted, updates
+figure objects in place, and lets Panel own resizing rather than also enabling
+Plotly's responsive resize handler. Pane identity was verified across filter
+changes. The static build and scientific tests pass locally. This is a targeted
+fix pending confirmation by the next GitHub browser run, not a locally verified
+browser fix. JavaScript errors remain fatal. CI now saves phase-tagged error
+stacks and console diagnostics even if the browser test fails.
+
 ## Visual theme update
 
 The Panel dashboard now uses the koinig.site header, return link, dark surfaces,

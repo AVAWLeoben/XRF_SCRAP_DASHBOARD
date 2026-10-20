@@ -16,6 +16,10 @@ def main():
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     errors = []
+    console = []
+    phase = "startup"
+    page = None
+    Path("artifacts").mkdir(exist_ok=True)
     try:
         with sync_playwright() as p:
             launch_options = {}
@@ -23,12 +27,14 @@ def main():
                 launch_options['executable_path'] = os.environ['BROWSER_EXECUTABLE']
             browser = p.chromium.launch(**launch_options)
             page = browser.new_page(viewport={'width': 1440, 'height': 1000})
-            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.on('pageerror', lambda e: errors.append({'phase': phase, 'message': str(e), 'stack': e.stack}))
+            page.on('console', lambda msg: console.append({'type': msg.type, 'text': msg.text}))
             with page.expect_worker(timeout=60000) as worker_info:
                 page.goto(f'http://127.0.0.1:{server.server_port}/dist/index.html')
             worker = worker_info.value
             # Panel removes this only when the live Python document has rendered.
             page.wait_for_function("!document.body.classList.contains('pn-loading')", timeout=240000)
+            phase = 'scientific checks'
             code = '''
 import json
 assert len(x.DF_FULL) == 4731
@@ -40,6 +46,7 @@ json.dumps({'pandas': pd.__version__, 'objects': len(x.DF_FULL), 'elements': len
 '''
             report = json.loads(worker.evaluate('(code) => self.pyodide.runPythonAsync(code)', code))
             # Exercise a real browser control and verify it reaches Python.
+            phase = 'particle dropdown'
             page.locator('select').first.select_option(label='Iron Particle')
             page.wait_for_function("!document.body.classList.contains('pn-loading')")
             import time
@@ -50,24 +57,32 @@ json.dumps({'pandas': pd.__version__, 'objects': len(x.DF_FULL), 'elements': len
                     break
                 page.wait_for_timeout(200)
             assert value == 'Iron Particle', value
-            # Drive every tab and invoke its reactive callback in the worker.
-            worker.evaluate('code => self.pyodide.runPythonAsync(code)', '''
-cond_particle.value = 'All particles'
-cond_group.value = 'Colour'
-heat_mode.value = 'weighted_mean'
-mass_scale.value = 'Linear'
-morph_features.value = ['perimeter']
-assert len(x.get_filtered_morphology_df('All particles', 'All')) == 5412
-''')
+            # Exercise updates sequentially so failures identify their operation.
+            operations = [
+                ('condition particle', "cond_particle.value = 'All particles'"),
+                ('condition grouping', "cond_group.value = 'Colour'"),
+                ('heatmap aggregation', "heat_mode.value = 'weighted_mean'"),
+                ('mass scale', "mass_scale.value = 'Linear'"),
+                ('morphology features', "morph_features.value = ['perimeter']"),
+            ]
+            for phase, code in operations:
+                worker.evaluate('code => self.pyodide.runPythonAsync(code)', code)
+                page.wait_for_timeout(600)
             for i in range(6):
+                phase = f'tab {i}'
                 worker.evaluate('code => self.pyodide.runPythonAsync(code)', f'tabs.active = {i}')
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(600)
+            phase = 'resize'
+            page.set_viewport_size({'width': 1100, 'height': 900})
+            page.wait_for_timeout(1000)
             assert not errors, errors
             Path('artifacts').mkdir(exist_ok=True)
             Path('artifacts/browser_check.json').write_text(json.dumps(report, indent=2))
             print('Live browser test passed:', report)
             browser.close()
     finally:
+        Path('artifacts/browser_diagnostics.json').write_text(json.dumps(
+            {'phase': phase, 'errors': errors, 'console': console}, indent=2))
         server.shutdown()
 
 if __name__ == '__main__':

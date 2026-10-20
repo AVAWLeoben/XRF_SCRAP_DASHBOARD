@@ -92,6 +92,8 @@ only the supplied scaled chemistry is included, without a scaling factor.
   Plotly categorical colours stay distinct from brand accents; heatmaps use Viridis.
   The legacy Dash interface retains its previous appearance.
 - `app.py`: Panel layout, widgets and interactions.
+  Chart panes persist across updates and tab changes to avoid queued resize
+  callbacks targeting removed Plotly graphs. Panel owns responsive sizing.
 - `xrf_core.py`: authoritative processing, statistics and figures for both apps.
 - `data/*.xlsx`: replace with new source data, maintaining the documented schema.
 - `xray_companion_dashboard.py`: legacy Dash interface.
