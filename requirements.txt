@@ -1,0 +1,7 @@
+panel==1.9.4
+bokeh==3.9.2
+plotly==6.3.0
+pandas==3.0.6
+numpy==2.5.4
+openpyxl==3.1.5
+pytest==8.4.2

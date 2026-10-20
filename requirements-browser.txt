@@ -1,0 +1,5 @@
+# NumPy/pandas come from the Pyodide distribution selected by pinned Panel.
+# Native CPython wheel pins cannot be installed in WebAssembly.
+pandas
+plotly==6.3.0
+openpyxl==3.1.5
