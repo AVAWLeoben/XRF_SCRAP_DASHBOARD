@@ -1,5 +1,16 @@
 # Validation performed
 
+## Visual theme update
+
+The Panel dashboard now uses the koinig.site header, return link, dark surfaces,
+rounded panels, dark widget/table styling, responsive filter wrapping, and a
+separate categorical scientific palette. The theme is in `theme.py` and packaged
+in the Pyodide resources. The landing-page repository is unchanged.
+Theme application was checked to preserve trace coordinates and logarithmic
+axes; box and point layers for an element share a colour. Panel construction,
+static conversion and the eight scientific tests pass. Browser visual review
+remains unverified locally due to the Chromium launch limitation below.
+
 ## Passed locally
 
 - Eight scientific/regression tests under pandas 3.0.6 / NumPy 2.5.4.

@@ -87,6 +87,10 @@ only the supplied scaled chemistry is included, without a scaling factor.
 
 ## Editing
 
+- `theme.py`: koinig.site colours, header, component styles and scientific chart palette.
+  The Panel dashboard uses dark navy panels and a return link to koinig.site.
+  Plotly categorical colours stay distinct from brand accents; heatmaps use Viridis.
+  The legacy Dash interface retains its previous appearance.
 - `app.py`: Panel layout, widgets and interactions.
 - `xrf_core.py`: authoritative processing, statistics and figures for both apps.
 - `data/*.xlsx`: replace with new source data, maintaining the documented schema.

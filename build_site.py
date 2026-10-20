@@ -7,7 +7,7 @@ if __name__ == '__main__':
     convert_app('app.py', dest_path='dist', runtime='pyodide-worker',
                 requirements=[line.strip() for line in Path('requirements-browser.txt').read_text().splitlines()
                               if line.strip() and not line.startswith('#')],
-                resources=['xrf_core.py', 'data/Dashboard_Daten_20.05.26_NORMALIZED.xlsx',
+                resources=['xrf_core.py', 'theme.py', 'data/Dashboard_Daten_20.05.26_NORMALIZED.xlsx',
                                'data/objektgroessen_von_fotos.xlsx'],
                 prerender=True, verbose=True)
     output = Path('dist')
