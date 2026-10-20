@@ -110,6 +110,35 @@ Other browser requirements are in `requirements-browser.txt`; the live test
 records the actual pandas version and checks the reference Cu weighted mean.
 The package is not a fully vendored dependency archive.
 
+## Object photographs (lazy hover previews)
+
+Keep the existing photos in `data/Object_Images/` in the repository. Filenames
+must follow `BOX_OBJECTID.jpg`, e.g. `282_5422.jpg` is object 5422. JPG/JPEG,
+PNG and WebP extensions are supported case-insensitively. Do not rename the folder.
+
+Each build creates `dist/image-index.json` and copies photos into
+`dist/data/Object_Images/`. Photos are not included in the Python resource ZIP
+and are not downloaded at page startup. The small filename index is fetched
+on the first sustained hover over a measurement; the corresponding image is
+requested only for that hover. A 120 ms dwell avoids fetching during quick
+pointer sweeps. Repeat visits use normal browser HTTP caching.
+
+Preview cards appear next to the pointer for individual points in element
+distributions, EAF distributions, the condition view, and mass scatter plots.
+Box summaries, heatmap cells and morphology histogram bins do not identify one
+object and therefore do not show a photo. Missing images show a fallback.
+Decimal measurement IDs use their integer part for photo lookup only (1034.1
+uses the 1034 photo); measurement IDs and XRF values remain unchanged.
+
+Duplicate photo IDs stop the build with an explicit error. Unrecognized
+filenames are listed in the generated index. An absent folder is supported,
+but results in no available photos. Add or update photos and push to rebuild.
+
+This preview is injected into the generated Pages HTML by `build_site.py`.
+Use the static build/local HTTP preview to test it; the legacy Dash app and
+`panel serve` do not include this browser script. Image files are published
+alongside the site even though visitors only download them on demand.
+
 ## Audit results for supplied workbooks
 
 - 4,731 XRF objects; 44 elements.

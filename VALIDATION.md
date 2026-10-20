@@ -1,5 +1,16 @@
 # Validation performed
 
+## Object photo preview
+
+Photo asset tests cover filename mapping, byte-for-byte copying, duplicate-ID
+rejection, and absent folders. The shipped JavaScript is exercised with a
+minimal DOM host to verify no startup fetches, integer-only photo keys,
+on-demand image URLs under repository subpaths, index reuse, quick-hover
+cancellation, summary exclusions, missing photos and unhover cleanup.
+This is not a substitute for a visual browser check using the real photos.
+Photos are not present in this local package; GitHub Actions picks up the
+existing repository folder during its build. Numerical data remain unchanged.
+
 ## Plotly lifecycle correction
 
 The supplied CI log reached the final browser assertion with three Plotly
