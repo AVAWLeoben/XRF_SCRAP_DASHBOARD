@@ -37,26 +37,29 @@ def main():
             phase = 'scientific checks'
             code = '''
 import json
-assert len(x.DF_FULL) == 4731
+assert len(x.DF_FULL) == 5097
 assert len(x.CHEM_ELEMENTS) == 44
 assert x.GOOD_PARTICLE_VALUE == 'Iron Particle'
 assert len(tabs) == 6
-assert abs(x.weighted_mean(x.DF_FULL.Cu, x.DF_FULL[x.GEWICHT_COL]) - 0.4986347309012205) < 1e-12
+raw = pd.read_excel(x.XLSX_PATH)
+valid = raw[x.GEWICHT_COL] > 0
+expected = (raw.loc[valid, 'Cu'] * raw.loc[valid, x.GEWICHT_COL]).sum() / raw.loc[valid, x.GEWICHT_COL].sum()
+assert abs(x.weighted_mean(x.DF_FULL.Cu, x.DF_FULL[x.GEWICHT_COL]) - expected) < 1e-12
 json.dumps({'pandas': pd.__version__, 'objects': len(x.DF_FULL), 'elements': len(x.CHEM_ELEMENTS)})
 '''
             report = json.loads(worker.evaluate('(code) => self.pyodide.runPythonAsync(code)', code))
             # Exercise a real browser control and verify it reaches Python.
             phase = 'particle dropdown'
-            page.locator('select').first.select_option(label='Iron Particle')
+            page.locator('select').first.select_option(label='Copper Bearing Particle')
             page.wait_for_function("!document.body.classList.contains('pn-loading')")
             import time
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
                 value = worker.evaluate("self.pyodide.runPython('dist_particle.value')")
-                if value == 'Iron Particle':
+                if value == 'Copper Bearing Particle':
                     break
                 page.wait_for_timeout(200)
-            assert value == 'Iron Particle', value
+            assert value == 'Copper Bearing Particle', value
             # Exercise updates sequentially so failures identify their operation.
             operations = [
                 ('condition particle', "cond_particle.value = 'All particles'"),

@@ -1,3 +1,19 @@
+# October 30 data and plotting update
+
+Extract this package into the repository root, overwriting matching files. Keep the existing `data/Object_Images/` folder. Photos are not included in this update ZIP and still load lazily. The GitHub workflow builds and tests the site before deployment.
+
+The active source is `data/XRF_Daten_30.10.26_NORMALISED.xlsx` (worksheet `Tabelle1`), copied unchanged from the latest supplied workbook. It contains 5,097 objects: 4,207 Iron Particles and 890 Copper Bearing Particles, with 44 elements and 366 zero Cu signals. This replaces the incomplete 4,731-object workbook. The publication script expects 4,208 Iron Particles and 889 Copper Bearing Particles; the dashboard preserves the latest workbook's classifications instead of forcing those older counts.
+
+Current source classifications are authoritative; legacy reclassification is disabled by default. Numerical values, including masses, are unchanged. Mass remains labeled according to the workbook's `Mass [g]` header. Objects 215 and 319 have zero mass: retained in unweighted statistics and plots, excluded from weighted statistics.
+
+Plot adaptations: zero-preserving log-like axes; original-space quartiles and Tukey whiskers transformed only for drawing; positive hollow outliers in box mode; half-density/raincloud plots with up to 250 reproducibly sampled points per group; full populations for summaries and densities; preferred condition order Wire, Cast, Fastening, Ductile, Spring, Sheet followed by other supplied categories. Cu/Cast receive copper accents. Heatmaps separate the linear Cu scale from log-like grayscale for other elements and preserve full-precision hover values. Iron Particle is the initial chemistry population; all populations remain selectable. Morphology stays unchanged.
+
+`ZERO_TRANSITION = 0.01` in `xrf_core.py` is a display parameter in arbitrary units, not a detection limit or a converted version of the publication's 0.01 wt.%. Absolute Cu threshold lines and threshold-based point colours are disabled for normalized data. Mass plots retain the full mass range; use zoom interactively.
+
+See VALIDATION.md for current verification. The older setup notes below describe the original migration; where methodology differs, this update takes precedence.
+
+---
+
 # KIRAMET XRF dashboard: Python to GitHub Pages
 
 This package contains a corrected Dash version and a Panel/Pyodide port sharing

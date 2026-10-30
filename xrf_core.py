@@ -1,13 +1,5 @@
 """Shared, validated XRF processing and Plotly figures for Dash and Panel."""
 
-def add_bdl_note(fig, df, elements):
-    items = [f"{e}: {int(df[e].eq(0).sum())}" for e in elements]
-    counts = '<br>'.join('; '.join(items[i:i+7]) for i in range(0, len(items), 7))
-    fig.add_annotation(x=0, y=-0.20, xref="paper", yref="paper", showarrow=False,
-                       xanchor="left", text="BDL zeros (not visible on log axes): " + counts,
-                       font=dict(size=10))
-    fig.update_layout(margin=dict(b=max(150, 80 + 16 * ((len(items)+6)//7))))
-    return fig
 
 from pathlib import Path
 import os
@@ -18,10 +10,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 BASE_DIR = Path(__file__).resolve().parent
-XLSX_PATH = BASE_DIR / 'data/Dashboard_Daten_20.05.26_NORMALIZED.xlsx'
+XLSX_PATH = BASE_DIR / 'data/XRF_Daten_30.10.26_NORMALISED.xlsx'
 MORPH_PATH = BASE_DIR / 'data/objektgroessen_von_fotos.xlsx'
 SIGNAL_LABEL = 'Normalized XRF signal [a.u.]'
-DATA_NOTE = 'XRF values have been divided by one undisclosed common positive constant. They are normalized signals, not absolute concentrations. Zeros denote below detection limit (BDL) and are retained as zero in statistics. Log axes cannot display zeros; statistical summaries still include them. Morphology is retained for reference; its values have not been validated.'
+DATA_NOTE = 'XRF values have been divided by one undisclosed common positive constant. They are normalized signals, not absolute concentrations. Zero chemical signals denote below detection limit (BDL) and are retained as zero in statistics. Zero-mass objects remain in unweighted analyses but are excluded from mass-weighted statistics. Zero-preserving log-like axes include BDL zeros. Box statistics are computed before display transformation; individual points may be sampled. The display transition is 0.01 a.u., not a detection limit. Morphology is retained for reference; its values have not been validated.'
 ID_COL = 'Objekt ID'
 GUT_COL = 'Visible_Copper'
 MAT_COL = 'Materialtype'
@@ -52,8 +44,8 @@ def normalize_object_id(value):
 zustand_translation = {'Spule': 'Coil', 'Knäuel': 'Tangle', 'Geflecht': 'Mesh', 'Draht': 'Wire', 'Elektronik Komponente': 'Electronic Component', 'Einzelteil': 'Single Part', 'Schaumstoff': 'Foam', 'Kunststoffteil mit Schraube': 'Fastening', 'Cast': 'Cast', 'Feder': 'Spring', 'Massivteil leicht verformt': 'Ductile', 'Massivteil verformt': 'Ductile', 'Massivteil': 'Ductile', 'Gepresst': 'Ductile', 'Steinartig': 'Cast', 'Schraube': 'Nuts & Bolts', 'Beilagscheibe': 'Nuts & Bolts', 'Mutter': 'Nuts & Bolts', 'Plättchen': 'Sheet', 'Nuts & Bolts': 'Fastening'}
 ELEMENT_SYMBOLS = set('H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og'.split())
 
-def preprocess_chemistry(raw):
-    """Validate without dropping observations, then apply ordered legacy rules.
+def preprocess_chemistry(raw, *, apply_legacy_rules=False):
+    """Validate without dropping observations. Legacy rules are opt-in only.
 
     Existing zero signals are BDL. Missing/invalid data are rejected, never
     silently imputed. Source workbooks and numerical measurements stay intact.
@@ -71,12 +63,10 @@ def preprocess_chemistry(raw):
     df[ID_KEY_COL] = df[ID_COL].apply(normalize_object_id)
     if df[ID_KEY_COL].eq('').any() or df[ID_KEY_COL].duplicated().any():
         raise ValueError('Missing or duplicate object IDs')
-    elements = sorted((c for c in df.columns if c in ELEMENT_SYMBOLS))
+    elements = [c for c in df.columns if c in ELEMENT_SYMBOLS]
     for col in [GEWICHT_COL] + elements:
         values = pd.to_numeric(df[col], errors='coerce')
         invalid = ~np.isfinite(values) | (values < 0)
-        if col == GEWICHT_COL:
-            invalid |= values <= 0
         if invalid.any():
             ids = df.loc[invalid, ID_COL].tolist()[:10]
             raise ValueError(f'Invalid/missing {col} for objects {ids}; no automatic zero imputation')
@@ -89,21 +79,22 @@ def preprocess_chemistry(raw):
     unknown = set(df[GUT_COL]) - {'Iron Particle', 'Copper Bearing Particle'}
     if unknown:
         raise ValueError(f'Unknown particle categories: {sorted(unknown)}')
-    first_pass = {k: v for k, v in zustand_translation.items() if k != 'Nuts & Bolts'}
-    df[ZUSTAND_COL] = df[ZUSTAND_COL].replace(first_pass)
     changes = []
-
-    def apply_rule(name, mask, column, new):
-        for index in df.index[mask & df[column].ne(new)]:
-            changes.append({'Object ID': df.at[index, ID_COL], 'Rule': name, 'Column': column, 'Before': df.at[index, column], 'After': new})
-        df.loc[mask, column] = new
-    apply_rule('Iron coils to copper-bearing', (df[GUT_COL] == 'Iron Particle') & (df[ZUSTAND_COL] == 'Coil'), GUT_COL, 'Copper Bearing Particle')
-    apply_rule('Copper-bearing springs to iron', (df[GUT_COL] == 'Copper Bearing Particle') & (df[ZUSTAND_COL] == 'Spring'), GUT_COL, 'Iron Particle')
-    apply_rule('Copper-bearing nuts/bolts to iron', (df[GUT_COL] == 'Copper Bearing Particle') & (df[ZUSTAND_COL] == 'Nuts & Bolts'), GUT_COL, 'Iron Particle')
-    apply_rule('Iron single parts to ductile', (df[GUT_COL] == 'Iron Particle') & (df[ZUSTAND_COL] == 'Single Part'), ZUSTAND_COL, 'Ductile')
-    apply_rule('Iron plastic parts with screw to fastening', (df[GUT_COL] == 'Iron Particle') & (df[ZUSTAND_COL] == 'Plastic Part with Screw'), ZUSTAND_COL, 'Fastening')
-    apply_rule('Iron object 3150 to cast', (df[GUT_COL] == 'Iron Particle') & (df[ID_KEY_COL] == '3150'), ZUSTAND_COL, 'Cast')
-    apply_rule('Consolidate nuts/bolts to fastening', df[ZUSTAND_COL] == 'Nuts & Bolts', ZUSTAND_COL, 'Fastening')
+    if apply_legacy_rules:
+        first_pass = {k: v for k, v in zustand_translation.items() if k != 'Nuts & Bolts'}
+        df[ZUSTAND_COL] = df[ZUSTAND_COL].replace(first_pass)
+    
+        def apply_rule(name, mask, column, new):
+            for index in df.index[mask & df[column].ne(new)]:
+                changes.append({'Object ID': df.at[index, ID_COL], 'Rule': name, 'Column': column, 'Before': df.at[index, column], 'After': new})
+            df.loc[mask, column] = new
+        apply_rule('Iron coils to copper-bearing', (df[GUT_COL] == 'Iron Particle') & (df[ZUSTAND_COL] == 'Coil'), GUT_COL, 'Copper Bearing Particle')
+        apply_rule('Copper-bearing springs to iron', (df[GUT_COL] == 'Copper Bearing Particle') & (df[ZUSTAND_COL] == 'Spring'), GUT_COL, 'Iron Particle')
+        apply_rule('Copper-bearing nuts/bolts to iron', (df[GUT_COL] == 'Copper Bearing Particle') & (df[ZUSTAND_COL] == 'Nuts & Bolts'), GUT_COL, 'Iron Particle')
+        apply_rule('Iron single parts to ductile', (df[GUT_COL] == 'Iron Particle') & (df[ZUSTAND_COL] == 'Single Part'), ZUSTAND_COL, 'Ductile')
+        apply_rule('Iron plastic parts with screw to fastening', (df[GUT_COL] == 'Iron Particle') & (df[ZUSTAND_COL] == 'Plastic Part with Screw'), ZUSTAND_COL, 'Fastening')
+        apply_rule('Iron object 3150 to cast', (df[GUT_COL] == 'Iron Particle') & (df[ID_KEY_COL] == '3150'), ZUSTAND_COL, 'Cast')
+        apply_rule('Consolidate nuts/bolts to fastening', df[ZUSTAND_COL] == 'Nuts & Bolts', ZUSTAND_COL, 'Fastening')
     df.attrs['classification_changes'] = changes
     groups = [c for c in [GUT_COL, MAT_COL, FARBE_COL, ZUSTAND_COL] if c in df]
     return (df, elements, groups)
@@ -180,7 +171,7 @@ def compact_summary(df: pd.DataFrame, value_cols: list[str], group_col: str | No
                 continue
             values = pd.to_numeric(g[col], errors='coerce').dropna()
             weights = g.loc[values.index, GEWICHT_COL] if GEWICHT_COL in g.columns else None
-            rows.append({'Group': group_name, 'Element': col, 'n': int(values.count()), 'BDL (zero)': int(values.eq(0).sum()), 'Min': values.min() if not values.empty else np.nan, 'Mean': values.mean() if not values.empty else np.nan, 'Weighted mean': weighted_mean(values, weights) if not values.empty else np.nan, 'Median': values.median() if not values.empty else np.nan, 'Weighted median': weighted_median(values, weights) if not values.empty else np.nan, 'Q1': values.quantile(0.25) if not values.empty else np.nan, 'Q3': values.quantile(0.75) if not values.empty else np.nan, 'Max': values.max() if not values.empty else np.nan})
+            rows.append({'Group': group_name, 'Element': col, 'n': int(values.count()), 'BDL (zero)': int(values.eq(0).sum()), 'SD': values.std(ddof=1), 'Mass N': int((weights > 0).sum()) if weights is not None else 0, 'Min': values.min() if not values.empty else np.nan, 'Mean': values.mean() if not values.empty else np.nan, 'Weighted mean': weighted_mean(values, weights) if not values.empty else np.nan, 'Median': values.median() if not values.empty else np.nan, 'Weighted median': weighted_median(values, weights) if not values.empty else np.nan, 'Q1': values.quantile(0.25) if not values.empty else np.nan, 'Q3': values.quantile(0.75) if not values.empty else np.nan, 'Max': values.max() if not values.empty else np.nan})
     return pd.DataFrame(rows)
 DF_FULL, CHEM_ELEMENTS, GROUP_COLS = load_and_preprocess_excel(XLSX_PATH)
 EAF_ELEMENTS = [e for e in EAF_ELEMENTS_DEFAULT if e in CHEM_ELEMENTS]
@@ -199,64 +190,9 @@ def clean_good_condition_df(df):
     """Retain all conditions after explicit preprocessing; no hidden exclusions."""
     return df.copy()
 
-def make_element_distribution_figure(df, elements, plot_type='Box', log_scale=True, title='Chemical element distribution'):
-    if not elements:
-        return go.Figure().update_layout(title='Select at least one element')
-    elements = [e for e in elements if e in df.columns]
-    if not elements:
-        return go.Figure().update_layout(title='Selected elements are not available')
-    data = df[[ID_COL] + elements].copy()
-    long = data.melt(id_vars=[ID_COL], value_vars=elements, var_name='Element', value_name='Concentration')
-    long['Concentration'] = pd.to_numeric(long['Concentration'], errors='coerce')
-    long = long.dropna(subset=['Concentration'])
-    if MAX_VISIBLE_POINTS_PER_ELEMENT is None:
-        points = long.copy()
-    else:
-        points = pd.concat([g.sample(n=min(len(g), MAX_VISIBLE_POINTS_PER_ELEMENT), random_state=42) for _, g in long.groupby('Element', sort=False)], ignore_index=True) if not long.empty else long.copy()
-    fig = go.Figure()
-    for i, element in enumerate(elements):
-        full_values = long.loc[long['Element'] == element, 'Concentration']
-        sampled = points.loc[points['Element'] == element]
-        if plot_type == 'Violin / raincloud':
-            fig.add_trace(go.Violin(x=[element] * len(full_values), y=full_values, name=element, box_visible=True, meanline_visible=False, points=False, opacity=0.55, showlegend=False))
-        else:
-            fig.add_trace(go.Box(x=[element] * len(full_values), y=full_values, name=element, boxpoints=False, showlegend=False))
-        if not sampled.empty:
-            fig.add_trace(go.Scatter(x=sampled['Element'], y=sampled['Concentration'], mode='markers', marker=dict(size=4, opacity=0.45), customdata=sampled[[ID_COL]].to_numpy(), hovertemplate='<b>Object ID:</b> %{customdata[0]}<br><b>Element:</b> %{x}<br><b>Normalized signal:</b> %{y:.4g} a.u.<extra></extra>', name=f'{element} points', showlegend=False))
-    fig.update_layout(template=PLOT_TEMPLATE, title=title, height=650, showlegend=False)
-    if log_scale:
-        fig.update_yaxes(type='log', title='Normalized XRF signal [a.u.] (log scale)')
-    else:
-        fig.update_yaxes(title='Normalized XRF signal [a.u.]')
-    fig.update_xaxes(categoryorder='array', categoryarray=elements)
-    if log_scale:
-        add_bdl_note(fig, df, elements)
-    return fig
 
-def make_eaf_condition_figure(df, element='Cu', group_col=ZUSTAND_COL, particle_class='All particles', log_scale=True):
-    """Interactive FIG13 equivalent: selected EAF element by condition/group."""
-    if element not in df.columns:
-        return go.Figure().update_layout(title=f'Missing element column: {element}')
-    d = clean_good_condition_df(filter_particle_class(df, particle_class))
-    if group_col not in d.columns:
-        return go.Figure().update_layout(title=f'Missing group column: {group_col}')
-    d = d.dropna(subset=[group_col, element]).copy()
-    d[element] = pd.to_numeric(d[element], errors='coerce')
-    d = d.dropna(subset=[element])
-    if d.empty:
-        return go.Figure().update_layout(title=f'No data available for {element} by {group_col}')
-    order = sorted(d[group_col].astype(str).unique())
-    fig = px.violin(d, x=group_col, y=element, color=group_col, box=True, points='all', category_orders={group_col: order}, hover_data=[ID_COL, GEWICHT_COL], template=PLOT_TEMPLATE, title=f'FIG13 equivalent — {element} distribution in {particle_class} by {group_col}')
-    fig.update_traces(jitter=0.25, marker_size=5, opacity=0.75)
-    median_value = d[element].median()
-    fig.add_annotation(xref='paper', yref='paper', x=0.02, y=0.98, text=f'Median {element} overall: {median_value:.4g} a.u.', showarrow=False, bgcolor='white', bordercolor='lightgrey')
-    fig.update_yaxes(type='log' if log_scale else 'linear', title=f'{element} normalized XRF signal [a.u.]' + (' (log scale)' if log_scale else ''))
-    fig.update_layout(showlegend=False, height=650)
-    if log_scale:
-        add_bdl_note(fig, d, [element])
-    return fig
 
-def make_mass_vs_eaf_element_comparison(df, element='Cu', group_a='Cast', group_b='Ductile', particle_class='All particles', log_scale=True):
+def _original_mass_plot(df, element='Cu', group_a='Cast', group_b='Ductile', particle_class='All particles', log_scale=True):
     """Interactive FIG14 equivalent: mass vs selected EAF element for two conditions."""
     if element not in df.columns:
         return go.Figure().update_layout(title=f'Missing element column: {element}')
@@ -312,13 +248,6 @@ def aggregate_composition(df, elements, mode='weighted_median', particle_class=G
     composition.index.name = ZUSTAND_COL
     return composition
 
-def make_composition_heatmap(df, elements, mode='weighted_median', particle_class=GOOD_PARTICLE_VALUE):
-    composition = aggregate_composition(df, elements, mode=mode, particle_class=particle_class)
-    if composition.empty:
-        return go.Figure().update_layout(title='No composition data available')
-    fig = px.imshow(composition, text_auto='.4g', aspect='auto', color_continuous_scale='YlOrBr', template=PLOT_TEMPLATE, title=f"FIG12 — {mode.replace('_', ' ').title()} normalized XRF signal ({particle_class})", labels=dict(x='Element', y='Condition', color='a.u.'))
-    fig.update_layout(height=max(500, 55 * len(composition.index)))
-    return fig
 
 def make_stats_table(df, elements, group_col=None):
     stats = compact_summary(df, elements, group_col=group_col)
@@ -380,3 +309,157 @@ def make_morphology_stats_table(particle_class, condition, features):
         rows.append({'Feature': feature, 'n': int(values.count()), 'Min': values.min() if not values.empty else np.nan, 'Mean': values.mean() if not values.empty else np.nan, 'Median': values.median() if not values.empty else np.nan, 'Q1': values.quantile(0.25) if not values.empty else np.nan, 'Q3': values.quantile(0.75) if not values.empty else np.nan, 'Max': values.max() if not values.empty else np.nan})
     stats = pd.DataFrame(rows)
     return (stats.to_dict('records'), [{'name': c, 'id': c} for c in stats.columns])
+
+# Display settings are in normalized units; they are never absolute Cu limits.
+ZERO_TRANSITION = 0.01
+CONDITION_ORDER = ['Wire', 'Cast', 'Fastening', 'Ductile', 'Spring', 'Sheet']
+
+def condition_order(values):
+    present = set(str(v) for v in values if pd.notna(v))
+    return [v for v in CONDITION_ORDER if v in present] + sorted(present - set(CONDITION_ORDER))
+
+def display_values(values, enabled=True):
+    a = np.asarray(values, dtype=float)
+    return np.log10(1 + a / ZERO_TRANSITION) if enabled else a
+
+def signal_axis(fig, values, enabled=True):
+    a = np.asarray(values, dtype=float)
+    maximum = float(np.nanmax(a)) if a.size else 0.
+    if enabled:
+        top = max(maximum, ZERO_TRANSITION)
+        ticks = np.r_[0., 10. ** np.arange(-5, int(np.ceil(np.log10(top))) + 1)]
+        ticks = ticks[(ticks == 0) | ((ticks >= min(ZERO_TRANSITION, top / 100)) & (ticks <= top * 1.01))]
+        fig.update_yaxes(type='linear', tickmode='array', tickvals=display_values(ticks),
+                         ticktext=[f'{v:g}' for v in ticks],
+                         title=SIGNAL_LABEL + ' · zero-preserving log-like',
+                         range=[-.04, float(display_values([top])[0]) + .1])
+    else:
+        fig.update_yaxes(type='linear', title=SIGNAL_LABEL)
+
+def add_bdl_note(fig, df, elements):
+    counts = '; '.join(f'{e}: {int(df[e].eq(0).sum())}' for e in elements)
+    fig.add_annotation(x=0, y=-.23, xref='paper', yref='paper', showarrow=False,
+        xanchor='left', text='BDL zeros included in statistics and display: ' + counts,
+        font=dict(size=10))
+    fig.update_layout(margin=dict(b=155))
+    return fig
+
+def raw_box(values):
+    a = np.asarray(values, dtype=float)
+    a = a[np.isfinite(a)]
+    if not a.size:
+        return None
+    q1, med, q3 = np.quantile(a, [.25, .5, .75])
+    inside = a[(a >= q1 - 1.5*(q3-q1)) & (a <= q3 + 1.5*(q3-q1))]
+    return np.array([q1, med, q3, inside.min(), inside.max()])
+
+def distribution_groups(df, value_col, group_col, groups, rain, log_scale, title):
+    """Raw-space Tukey statistics, transformed only for drawing.
+
+    Half-density is computed in display space, matching the reference script.
+    Deterministic point sampling affects neither density nor statistics.
+    """
+    fig = go.Figure()
+    rng = np.random.default_rng(20261030)
+    for i, group in enumerate(groups):
+        g = df.loc[df[group_col].eq(group)].copy()
+        a = g[value_col].to_numpy(dtype=float)
+        stats = raw_box(a)
+        if stats is None:
+            continue
+        q1, med, q3, low, high = display_values(stats, log_scale)
+        if rain:
+            z = display_values(a, log_scale)
+            edges = np.linspace(0, max(float(z.max()), .01)*1.01, 180)
+            hist, _ = np.histogram(z, bins=edges)
+            kernel = np.exp(-.5*(np.arange(-13,14)/3.2)**2); kernel /= kernel.sum()
+            smoothed = np.convolve(hist, kernel, mode='same')
+            density = smoothed / max(smoothed.max(), 1.)
+            yy = (edges[1:] + edges[:-1])/2
+            fig.add_trace(go.Scatter(x=np.r_[i-.34*density, np.full(len(yy), i)],
+                y=np.r_[yy, yy[::-1]], fill='toself', mode='lines', line=dict(width=.6),
+                opacity=.5, name=str(group), hoverinfo='skip', showlegend=False))
+        fig.add_trace(go.Box(x=[i+.035 if rain else i], q1=[q1], median=[med], q3=[q3],
+            lowerfence=[low], upperfence=[high], width=.115 if rain else .55,
+            customdata=[stats.tolist()], name=str(group), boxpoints=False, showlegend=False,
+            hovertemplate='Q1: %{customdata[0]:.5g}<br>Median: %{customdata[1]:.5g}<br>Q3: %{customdata[2]:.5g}<br>Whiskers: %{customdata[3]:.5g}–%{customdata[4]:.5g} a.u.<extra></extra>'))
+        # Keep full-population positive Tukey outliers in Box mode.
+        if rain:
+            points = g.sample(n=min(len(g), MAX_VISIBLE_POINTS_PER_ELEMENT), random_state=42)
+        else:
+            raw_q1, _, raw_q3, _, _ = stats
+            points = g.loc[(g[value_col] > 0) & ((g[value_col] < raw_q1-1.5*(raw_q3-raw_q1)) | (g[value_col] > raw_q3+1.5*(raw_q3-raw_q1)))]
+        if not points.empty:
+            xx = i + rng.uniform(.11,.31,len(points)) if rain else np.full(len(points), i)
+            fig.add_trace(go.Scatter(x=xx, y=display_values(points[value_col], log_scale),
+                mode='markers', marker=dict(size=4, opacity=.45, symbol='circle' if rain else 'circle-open'),
+                customdata=points[[ID_COL, value_col]].to_numpy(), name=str(group)+' points', showlegend=False,
+                hovertemplate='<b>Object ID:</b> %{customdata[0]}<br>Normalized signal: %{customdata[1]:.5g} a.u.<extra></extra>'))
+    fig.update_layout(template=PLOT_TEMPLATE, title=title, height=650, showlegend=False)
+    fig.update_xaxes(tickmode='array', tickvals=list(range(len(groups))), ticktext=groups,
+                     range=[-.6,len(groups)-.4], tickangle=26 if len(groups)>8 else 0)
+    signal_axis(fig, df[value_col], log_scale)
+    return fig
+
+def make_element_distribution_figure(df, elements, plot_type='Box', log_scale=True, title='Chemical element distribution'):
+    elements = [e for e in elements if e in df.columns]
+    if not elements:
+        return go.Figure().update_layout(title='Select at least one element')
+    long = df[[ID_COL]+elements].melt(id_vars=ID_COL, var_name='Element', value_name='Signal')
+    fig = distribution_groups(long, 'Signal', 'Element', elements, plot_type=='Violin / raincloud', log_scale, title)
+    if plot_type == 'Violin / raincloud':
+        fig.add_annotation(x=1,y=1.07,xref='paper',yref='paper',showarrow=False,
+            text=f'Rain: up to {MAX_VISIBLE_POINTS_PER_ELEMENT} objects/element; density and boxes: all objects')
+    return add_bdl_note(fig, df, elements)
+
+def make_eaf_condition_figure(df, element='Cu', group_col=ZUSTAND_COL, particle_class='All particles', log_scale=True):
+    d = filter_particle_class(df, particle_class)
+    if element not in d or group_col not in d:
+        return go.Figure().update_layout(title='Selected column unavailable')
+    order = condition_order(d[group_col]) if group_col==ZUSTAND_COL else sorted(d[group_col].unique())
+    fig = distribution_groups(d, element, group_col, order, True, log_scale,
+        f'{element} by {group_col} — {particle_class}')
+    fig.add_annotation(x=1,y=1.07,xref='paper',yref='paper',showarrow=False,
+        text=f'Rain: up to {MAX_VISIBLE_POINTS_PER_ELEMENT} objects/group; statistics: all objects')
+    return add_bdl_note(fig, d, [element])
+
+
+def make_mass_vs_eaf_element_comparison(df, element='Cu', group_a='Cast', group_b='Ductile', particle_class='All particles', log_scale=True):
+    fig = _original_mass_plot(df, element, group_a, group_b, particle_class, False)
+    for trace in fig.data:
+        raw = np.asarray(trace.y, dtype=float)
+        if trace.customdata is not None:
+            trace.customdata = np.column_stack([trace.customdata, raw])
+            trace.hovertemplate = trace.hovertemplate.replace('%{y:.4g}', '%{customdata[2]:.4g}')
+        trace.y = display_values(raw, log_scale)
+    d = filter_particle_class(df, particle_class)
+    d = d.loc[d[ZUSTAND_COL].isin([group_a, group_b])]
+    signal_axis(fig, d[element], log_scale)
+    # Full mass extent remains accessible; no fixed crop hides heavier objects.
+    return add_bdl_note(fig, d, [element])
+
+def make_composition_heatmap(df, elements, mode='weighted_median', particle_class=GOOD_PARTICLE_VALUE):
+    comp = aggregate_composition(df, elements, mode, particle_class)
+    if comp.empty:
+        return go.Figure().update_layout(title='No composition data available')
+    comp = comp.reindex(condition_order(comp.index))
+    fig = go.Figure()
+    for copper in [False, True]:
+        mask = np.array([e=='Cu' for e in comp.columns]) == copper
+        if not mask.any():
+            continue
+        raw = comp.to_numpy(dtype=float)
+        z = raw.copy() if copper else display_values(raw)
+        z[:,~mask] = np.nan
+        fig.add_trace(go.Heatmap(z=z, x=list(comp.columns), y=list(comp.index), customdata=raw,
+            colorscale='YlOrBr' if copper else 'Greys', showscale=copper,
+            colorbar=dict(title='Cu [a.u.]'), zmin=0,
+            text=np.where(np.isfinite(z), np.array([[f'{v:.4g}' for v in row] for row in raw]), ''), texttemplate='%{text}',
+            hoverongaps=False, hovertemplate='%{y} · %{x}<br>%{customdata:.6g} a.u.<extra></extra>'))
+    fig.update_layout(template=PLOT_TEMPLATE, title=f'{mode.replace("_"," ").title()} — {particle_class}',
+                      height=max(500,55*len(comp)))
+    fig.update_yaxes(autorange='reversed')
+    fig.add_annotation(x=0,y=-.17,xref='paper',yref='paper',showarrow=False,
+        text='Cu: linear copper scale. Other elements: zero-preserving log-like grayscale. Values: a.u.')
+    fig.update_layout(margin=dict(b=120))
+    return fig

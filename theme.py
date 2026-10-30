@@ -85,10 +85,11 @@ def style_figure(figure, categories):
     for trace in fig.data:
         if trace.type == 'heatmap':
             # Perceptually ordered scale; branding does not encode magnitude.
-            trace.colorscale = 'Viridis'
+            # Preserve the explicit Cu/other-element scales.
+            pass
             continue
         name = (trace.name or '').removesuffix(' points')
-        color = colors.get(name, PALETTE[0])
+        color = '#c98543' if name in ('Cu', 'Cast') else colors.get(name, PALETTE[0])
         if trace.type in ('box', 'violin'):
             trace.update(line_color=color, fillcolor=color, marker_color=color)
         elif trace.type in ('scatter', 'histogram'):

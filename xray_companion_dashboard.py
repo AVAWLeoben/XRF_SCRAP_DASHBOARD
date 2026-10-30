@@ -134,7 +134,7 @@ app.layout = html.Div(
                             html.Label("Scale"),
                             dcc.RadioItems(
                                 id="dist-log-scale",
-                                options=[{"label": "Log", "value": "log"}, {"label": "Linear", "value": "linear"}],
+                                options=[{"label": "Zero-preserving log-like", "value": "log"}, {"label": "Linear", "value": "linear"}],
                                 value="log",
                                 inline=True,
                             ),

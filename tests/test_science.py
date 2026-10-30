@@ -6,7 +6,7 @@ import xrf_core as x
 
 def test_measurements_and_population_are_preserved():
     raw = pd.read_excel(x.XLSX_PATH)
-    assert len(x.DF_FULL) == len(raw) == 4731
+    assert len(x.DF_FULL) == len(raw) == 5097
     assert len(x.CHEM_ELEMENTS) == 44
     assert 'Be' in x.CHEM_ELEMENTS and 'Colour' in x.GROUP_COLS
     for col in x.CHEM_ELEMENTS + [x.GEWICHT_COL, x.ID_COL]:
@@ -18,7 +18,7 @@ def test_ordered_classification_and_no_fastening_guess():
         x.GUT_COL: ['Gutteil', 'Schlechtteil', 'Schlechtteil', 'Gutteil', 'Gutteil', 'Gutteil', 'Schlechtteil'],
         x.ZUSTAND_COL: ['Coil', 'Spring', 'Nuts & Bolts', 'Single Part', 'Plastic Part with Screw', 'Ductile', 'Fastening'],
         x.GEWICHT_COL: [1.] * 7, 'Cu': [0.] * 7})
-    d, _, _ = x.preprocess_chemistry(raw)
+    d, _, _ = x.preprocess_chemistry(raw, apply_legacy_rules=True)
     assert d[x.GUT_COL].tolist() == ['Copper Bearing Particle', 'Iron Particle', 'Iron Particle',
         'Iron Particle', 'Iron Particle', 'Iron Particle', 'Copper Bearing Particle']
     assert d[x.ZUSTAND_COL].tolist() == ['Coil', 'Spring', 'Fastening', 'Ductile', 'Fastening', 'Cast', 'Fastening']
@@ -45,15 +45,38 @@ def test_all_group_statistics_against_independent_formulas():
         for name, g in d.groupby(x.ZUSTAND_COL):
             expected = (g[x.CHEM_ELEMENTS].to_numpy() * g[x.GEWICHT_COL].to_numpy()[:, None]).sum(axis=0) / g[x.GEWICHT_COL].sum()
             np.testing.assert_allclose(comp.loc[name], expected, rtol=1e-12, atol=1e-14)
-    assert x.compact_summary(x.DF_FULL, ['Sn']).iloc[0]['BDL (zero)'] == 3923
+    assert x.compact_summary(x.DF_FULL, ['Sn']).iloc[0]['BDL (zero)'] == x.DF_FULL['Sn'].eq(0).sum()
 
-def test_plots_keep_all_observations_in_statistical_layer():
-    fig = x.make_element_distribution_figure(x.DF_FULL, ['Cu', 'Be'])
-    assert len(fig.data[0].y) == 4731
-    assert len(fig.data[1].y) == 250
-    assert len(fig.data[2].y) == 4731
-    assert all(v == 0 for v in fig.data[2].y)
+def test_raw_quartiles_transformed_after_statistics():
+    raw = np.array([0., 0., .001, .01, .1, 1., 10.])
+    d = x.DF_FULL.head(len(raw)).copy()
+    d['Cu'] = raw
+    fig = x.make_element_distribution_figure(d, ['Cu'])
+    box = fig.data[0]
+    expected = np.quantile(raw, [.25, .5, .75])
+    np.testing.assert_allclose([box.q1[0], box.median[0], box.q3[0]], x.display_values(expected))
+    np.testing.assert_allclose(box.customdata[0][:3], expected)
+    assert fig.layout.yaxis.type == 'linear'
+    assert 0 in fig.layout.yaxis.tickvals
     assert not fig.layout.shapes
+
+
+def test_supplied_classifications_preserved_by_default():
+    raw = pd.read_excel(x.XLSX_PATH)
+    for col in [x.GUT_COL, x.ZUSTAND_COL]:
+        pd.testing.assert_series_equal(raw[col], x.DF_FULL[col])
+    assert x.DF_FULL.attrs['classification_changes'] == []
+
+
+def test_hover_retains_original_signals_and_ids():
+    fig = x.make_mass_vs_eaf_element_comparison(x.DF_FULL)
+    for trace in fig.data:
+        raw = np.asarray(trace.customdata[:,2], dtype=float)
+        np.testing.assert_allclose(trace.y, x.display_values(raw))
+        for point in trace.customdata:
+            row = x.DF_FULL.loc[x.DF_FULL[x.ID_COL].eq(point[0])].iloc[0]
+            assert row['Cu'] == point[2]
+
 
 def test_all_plot_builders_and_empty_selection():
     x.make_eaf_condition_figure(x.DF_FULL)
@@ -67,3 +90,8 @@ def test_all_plot_builders_and_empty_selection():
 def test_morphology_measurements_unchanged():
     original = pd.read_excel(x.MORPH_PATH)
     pd.testing.assert_frame_equal(original, x.DF_MORPH[original.columns])
+
+
+def test_complete_workbook_counts():
+    assert x.DF_FULL[x.GUT_COL].value_counts().to_dict() == {'Iron Particle': 4207, 'Copper Bearing Particle': 890}
+    assert x.DF_FULL['Cu'].eq(0).sum() == 366

@@ -1,72 +1,9 @@
-# Validation performed
+# Current validation
 
-## Object photo preview
+The supplied normalized workbook is used unchanged. All source IDs, classes, conditions, chemical signals and masses are preserved. Audit CSVs compare source values to processed values; they do not claim the new source equals the previous workbook.
 
-Photo asset tests cover filename mapping, byte-for-byte copying, duplicate-ID
-rejection, and absent folders. The shipped JavaScript is exercised with a
-minimal DOM host to verify no startup fetches, integer-only photo keys,
-on-demand image URLs under repository subpaths, index reuse, quick-hover
-cancellation, summary exclusions, missing photos and unhover cleanup.
-This is not a substitute for a visual browser check using the real photos.
-Photos are not present in this local package; GitHub Actions picks up the
-existing repository folder during its build. Numerical data remain unchanged.
+Verification covers weighted means against independent formulas, raw-space box quartiles before axis transformation, preserved raw hover values and object IDs, zero display, classifications, malformed input rejection, morphology preservation and image lookup behavior.
 
-## Plotly lifecycle correction
+Local runtime: Python 3.12, pandas 3.1.0, NumPy 2.5.4, Plotly 6.3.0, Panel 1.9.4. Deployment dependencies retain the repository's existing pins. Local Python tests, JavaScript lazy-loading checks, audit and Panel static conversion were run. A live browser rendering check was not run locally; the existing GitHub workflow still requires it before deployment. Browser checks now compute their expected Cu mean from the supplied workbook instead of the old hardcoded mean.
 
-The supplied CI log reached the final browser assertion with three Plotly
-`_guiEditing` errors. This is consistent with a resize/redraw targeting a graph
-whose layout is unavailable; the exact browser stack was not in that log.
-The revised app keeps its six Plotly panes and tab contents mounted, updates
-figure objects in place, and lets Panel own resizing rather than also enabling
-Plotly's responsive resize handler. Pane identity was verified across filter
-changes. The static build and scientific tests pass locally. This is a targeted
-fix pending confirmation by the next GitHub browser run, not a locally verified
-browser fix. JavaScript errors remain fatal. CI now saves phase-tagged error
-stacks and console diagnostics even if the browser test fails.
-
-## Visual theme update
-
-The Panel dashboard now uses the koinig.site header, return link, dark surfaces,
-rounded panels, dark widget/table styling, responsive filter wrapping, and a
-separate categorical scientific palette. The theme is in `theme.py` and packaged
-in the Pyodide resources. The landing-page repository is unchanged.
-Theme application was checked to preserve trace coordinates and logarithmic
-axes; box and point layers for an element share a colour. Panel construction,
-static conversion and the eight scientific tests pass. Browser visual review
-remains unverified locally due to the Chromium launch limitation below.
-
-## Passed locally
-
-- Eight scientific/regression tests under pandas 3.0.6 / NumPy 2.5.4.
-- The same eight tests under pandas 2.2.3 / NumPy 2.3.5.
-- All six corrected Dash callbacks executed successfully with Dash 3.2.0.
-- Panel 1.9.4 application imports and constructs six tabs successfully.
-- Static Pyodide-worker conversion succeeds with Bokeh 3.9.2 and Plotly 6.3.0.
-- Generated resource archive contains the shared Python module and both workbooks.
-- Source workbook bytes preserved, recorded by SHA-256 in audit.json.
-- Every XRF measurement and mass equals the supplied value exactly after loading.
-- Independent weighted means agree for every element and condition, for all
-  particles and each particle class (relative tolerance 1e-12, absolute 1e-14).
-- Sampling preserves all observations in each distribution's statistical layer.
-- Full-precision statistics and zero/BDL counts are retained.
-- Rule tests cover coils, springs, nuts/bolts, single parts, plastic parts with
-  screws, object 3150, and ambiguous preconsolidated Fastening labels.
-
-## Not yet verified
-
-- Live browser rendering, browser/worker callback synchronization, and visual
-  appearance. Chromium downloaded, but exits with SIGTRAP on launch in this
-  execution environment, before any page is opened. No browser success is claimed.
-- Deployment to the user's repository: its URL/access have not been supplied.
-- Scientific validity of morphology values, intentionally out of scope.
-
-The included GitHub Actions workflow runs `browser_check.py` before deployment.
-That check waits for the live Pyodide document (not just the prerender), checks
-the reference Cu weighted mean and dataset dimensions, exercises a native
-browser dropdown, invokes the tab callbacks and visits all six tabs. A failure
-blocks deployment. The first successful CI run and a visual review of the
-deployed site remain required to establish end-to-end readiness.
-
-The delivered `dist/` is a generated build, included for review. It is ignored
-by Git and is regenerated by the workflow. Do not treat successful compilation
-as proof of browser compatibility.
+Latest source: 5,097 objects (4,207 Iron Particle, 890 Copper Bearing Particle), 44 elements, 366 Cu zeros. Total count now matches the publication script. The particle-class counts differ by one from that script; current workbook labels are preserved. The supplied workbook is used byte-for-byte, without re-normalization or legacy reclassification.

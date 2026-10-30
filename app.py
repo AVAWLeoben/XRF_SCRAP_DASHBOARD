@@ -7,7 +7,7 @@ import theme as t
 pn.extension('plotly', 'tabulator', design='native', theme='dark',
              global_css=[t.GLOBAL_CSS], sizing_mode='stretch_width')
 particles = ['All particles'] + sorted(x.DF_FULL[x.GUT_COL].unique())
-conditions = sorted(x.DF_FULL[x.ZUSTAND_COL].unique())
+conditions = x.condition_order(x.DF_FULL[x.ZUSTAND_COL])
 
 def select(name, options, value=None):
     return pn.widgets.Select(name=name, options=options, value=value or options[0], width=220, height=70, sizing_mode='fixed',
@@ -41,42 +41,42 @@ def result(fig, df=None, *, key, heading='Statistics (normalized XRF signals; BD
 
 def chemistry_view(particle, elements, kind, scale, key="distribution"):
     d = x.filter_particle_class(x.DF_FULL, particle)
-    fig = x.make_element_distribution_figure(d, elements, kind, scale == 'Log', f'Element distributions — {particle}')
+    fig = x.make_element_distribution_figure(d, elements, kind, scale != 'Linear', f'Element distributions — {particle}')
     return result(fig, x.compact_summary(d, elements), key=key)
 
-dist_particle = select('Particle subset', particles)
+dist_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
 dist_elements = pn.widgets.MultiChoice(name='Elements', options=x.CHEM_ELEMENTS, value=x.EAF_ELEMENTS, stylesheets=[t.COMPONENT_CSS])
 dist_kind = select('Plot type', ['Box', 'Violin / raincloud'])
-dist_scale = select('Scale', ['Log', 'Linear'])
+dist_scale = select('Scale', ['Zero-preserving log-like', 'Linear'])
 distribution = pn.Column(pn.FlexBox(dist_particle, dist_kind, dist_scale), dist_elements,
     pn.bind(chemistry_view, dist_particle, dist_elements, dist_kind, dist_scale))
 
-eaf_particle = select('Particle subset', particles)
-eaf = pn.Column(eaf_particle, pn.bind(chemistry_view, eaf_particle, x.EAF_ELEMENTS, 'Violin / raincloud', 'Log', key='eaf'))
+eaf_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
+eaf = pn.Column(eaf_particle, pn.bind(chemistry_view, eaf_particle, x.EAF_ELEMENTS, 'Violin / raincloud', 'Zero-preserving log-like', key='eaf'))
 
 def condition_view(particle, element, group, scale):
     d = x.filter_particle_class(x.DF_FULL, particle)
-    return result(x.make_eaf_condition_figure(x.DF_FULL, element, group, particle, scale == 'Log'),
+    return result(x.make_eaf_condition_figure(x.DF_FULL, element, group, particle, scale != 'Linear'),
                   x.compact_summary(d, [element], group), key="condition")
 
 cond_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
 cond_element = select('EAF element', x.EAF_ELEMENTS, 'Cu')
 cond_group = select('Group by', x.GROUP_COLS, x.ZUSTAND_COL)
-cond_scale = select('Scale', ['Log', 'Linear'])
+cond_scale = select('Scale', ['Zero-preserving log-like', 'Linear'])
 by_condition = pn.Column(pn.FlexBox(cond_particle, cond_element, cond_group, cond_scale),
     pn.bind(condition_view, cond_particle, cond_element, cond_group, cond_scale))
 
-mass_particle = select('Particle subset', particles)
+mass_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
 mass_element = select('EAF element', x.EAF_ELEMENTS, 'Cu')
 mass_a = select('Condition A', conditions, 'Cast')
 mass_b = select('Condition B', conditions, 'Ductile')
-mass_scale = select('Scale', ['Log', 'Linear'])
+mass_scale = select('Scale', ['Zero-preserving log-like', 'Linear'])
 def mass_view(particle, element, a, b, scale):
-    return result(x.make_mass_vs_eaf_element_comparison(x.DF_FULL, element, a, b, particle, scale == 'Log'), key='mass')
+    return result(x.make_mass_vs_eaf_element_comparison(x.DF_FULL, element, a, b, particle, scale != 'Linear'), key='mass')
 mass = pn.Column(pn.FlexBox(mass_particle, mass_element, mass_scale), pn.FlexBox(mass_a, mass_b),
     pn.bind(mass_view, mass_particle, mass_element, mass_a, mass_b, mass_scale))
 
-heat_particle = select('Particle subset', particles)
+heat_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
 heat_mode = select('Aggregation', ['weighted_median', 'weighted_mean', 'median', 'mean'])
 heat_elements = pn.widgets.MultiChoice(name='Elements', options=x.CHEM_ELEMENTS, value=x.EAF_ELEMENTS, stylesheets=[t.COMPONENT_CSS])
 def heat_view(particle, elements, mode):
