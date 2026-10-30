@@ -41,6 +41,7 @@ assert len(x.DF_FULL) == 5097
 assert len(x.CHEM_ELEMENTS) == 44
 assert x.GOOD_PARTICLE_VALUE == 'Iron Particle'
 assert len(tabs) == 6
+assert 'heatmap_median' in _result_views and 'heatmap_mean' in _result_views
 raw = pd.read_excel(x.XLSX_PATH)
 valid = raw[x.GEWICHT_COL] > 0
 expected = (raw.loc[valid, 'Cu'] * raw.loc[valid, x.GEWICHT_COL]).sum() / raw.loc[valid, x.GEWICHT_COL].sum()
@@ -64,7 +65,8 @@ json.dumps({'pandas': pd.__version__, 'objects': len(x.DF_FULL), 'elements': len
             operations = [
                 ('condition particle', "cond_particle.value = 'All particles'"),
                 ('condition grouping', "cond_group.value = 'Colour'"),
-                ('heatmap aggregation', "heat_mode.value = 'weighted_mean'"),
+                ('heatmap particle', "heat_particle.value = 'Copper Bearing Particle'"),
+                ('heatmap elements', "heat_elements.value = ['Fe', 'Cu', 'Sn']"),
                 ('mass scale', "mass_scale.value = 'Linear'"),
                 ('morphology features', "morph_features.value = ['perimeter']"),
             ]

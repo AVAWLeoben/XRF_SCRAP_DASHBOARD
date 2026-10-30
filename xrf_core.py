@@ -463,3 +463,20 @@ def make_composition_heatmap(df, elements, mode='weighted_median', particle_clas
         text='Cu: linear copper scale. Other elements: zero-preserving log-like grayscale. Values: a.u.')
     fig.update_layout(margin=dict(b=120))
     return fig
+
+
+def make_composition_heatmap_pair(df, elements, particle_class=GOOD_PARTICLE_VALUE):
+    """Unweighted median and arithmetic mean with shared display ranges."""
+    figures = [make_composition_heatmap(df, elements, mode, particle_class)
+               for mode in ('median', 'mean')]
+    # Trace names identify linear Cu vs transformed other-element encodings.
+    for copper in (False, True):
+        traces = [trace for fig in figures for trace in fig.data
+                  if trace.type == 'heatmap' and bool(trace.showscale) == copper]
+        maxima = [float(np.nanmax(trace.z)) for trace in traces
+                  if np.isfinite(np.asarray(trace.z, dtype=float)).any()]
+        maximum = max(maxima, default=0.) or 1.
+        for trace in traces:
+            trace.zmin = 0
+            trace.zmax = maximum
+    return tuple(figures)

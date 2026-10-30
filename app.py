@@ -77,14 +77,21 @@ mass = pn.Column(pn.FlexBox(mass_particle, mass_element, mass_scale), pn.FlexBox
     pn.bind(mass_view, mass_particle, mass_element, mass_a, mass_b, mass_scale))
 
 heat_particle = select('Particle subset', particles, x.GOOD_PARTICLE_VALUE)
-heat_mode = select('Aggregation', ['weighted_median', 'weighted_mean', 'median', 'mean'])
 heat_elements = pn.widgets.MultiChoice(name='Elements', options=x.CHEM_ELEMENTS, value=x.EAF_ELEMENTS, stylesheets=[t.COMPONENT_CSS])
-def heat_view(particle, elements, mode):
-    comp = x.aggregate_composition(x.DF_FULL, elements, mode, particle).reset_index()
-    return result(x.make_composition_heatmap(x.DF_FULL, elements, mode, particle), comp, key="heatmap")
-heatmap = pn.Column(pn.FlexBox(heat_particle, heat_mode), heat_elements,
-    pn.pane.Markdown('Weighted mean estimates a mass-weighted signal. Weighted median is a distribution statistic, not bulk composition.'),
-    pn.bind(heat_view, heat_particle, heat_elements, heat_mode))
+def heat_view(particle, elements):
+    figures = x.make_composition_heatmap_pair(x.DF_FULL, elements, particle)
+    views = []
+    for mode, fig in zip(('median', 'mean'), figures):
+        comp = x.aggregate_composition(x.DF_FULL, elements, mode, particle)
+        comp = comp.reindex(x.condition_order(comp.index)).reset_index()
+        view = result(fig, comp, key='heatmap_' + mode,
+                      heading=mode.title() + ' by condition (unweighted; BDL counted as zero)')
+        view.min_width = 520
+        views.append(view)
+    return pn.FlexBox(*views, flex_wrap='wrap')
+heatmap = pn.Column(heat_particle, heat_elements,
+    pn.pane.Markdown('**Median and arithmetic mean by condition.** Each object has equal weight; BDL values remain zero. Both maps use matching colour ranges for direct comparison. Rows include Cast, Wire and the other supplied conditions.'),
+    pn.bind(heat_view, heat_particle, heat_elements))
 
 morph_particle = select('Particle subset', particles)
 morph_condition = select('Condition', ['All'] + conditions)

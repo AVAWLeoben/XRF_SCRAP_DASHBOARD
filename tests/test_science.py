@@ -95,3 +95,23 @@ def test_morphology_measurements_unchanged():
 def test_complete_workbook_counts():
     assert x.DF_FULL[x.GUT_COL].value_counts().to_dict() == {'Iron Particle': 4207, 'Copper Bearing Particle': 890}
     assert x.DF_FULL['Cu'].eq(0).sum() == 366
+
+
+def test_heatmap_pair_unweighted_values_and_matching_scales():
+    d = pd.DataFrame({x.ID_COL:[1,2,3,4,5,6],
+        x.GUT_COL:['Iron Particle']*6, x.ZUSTAND_COL:['Cast']*3+['Wire']*3,
+        x.GEWICHT_COL:[100,1,1,1,1,100], 'Cu':[0.,1.,8.,0.,0.,6.], 'Fe':[1.,2.,9.,2.,4.,12.]})
+    figures = x.make_composition_heatmap_pair(d, ['Fe','Cu'], 'Iron Particle')
+    for fig, mode in zip(figures, ['median','mean']):
+        for trace in fig.data:
+            for i, condition in enumerate(trace.y):
+                g = d.loc[d[x.ZUSTAND_COL].eq(condition)]
+                expected = getattr(g[['Fe','Cu']], mode)().to_numpy()
+                np.testing.assert_allclose(np.asarray(trace.customdata)[i], expected)
+    for a,b in zip(figures[0].data,figures[1].data):
+        assert list(a.y) == list(b.y)
+        assert a.zmin == b.zmin and a.zmax == b.zmax
+    assert 'Median' in figures[0].layout.title.text
+    assert 'Mean' in figures[1].layout.title.text
+    for fig in x.make_composition_heatmap_pair(d, [], 'Iron Particle'):
+        assert len(fig.data) == 0

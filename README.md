@@ -1,3 +1,7 @@
+## Paired heatmaps update
+
+The Panel heatmap tab now shows ordinary (unweighted) median and arithmetic mean simultaneously, grouped by condition (Cast, Wire, etc.). Both respond to the same particle subset and element selectors, share colour limits, and include BDL zeros. Each has a matching numeric table. Charts wrap on narrower screens. This replaces the single weighted-aggregation selector. Scientific mass-weighted statistics elsewhere remain available.
+
 # October 30 data and plotting update
 
 Extract this package into the repository root, overwriting matching files. Keep the existing `data/Object_Images/` folder. Photos are not included in this update ZIP and still load lazily. The GitHub workflow builds and tests the site before deployment.
